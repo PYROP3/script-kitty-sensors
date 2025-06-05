@@ -29,31 +29,26 @@ class RFIDToKeyboard:
             self.led.off()
             sleep_ms(duration)
 
+    def uid_to_id(self, uid) -> str:
+        return f"{uid[0]:02X}:{uid[1]:02X}:{uid[2]:02X}:{uid[3]:02X}"
+
     def loop(self):
         self.reader.init()
 
-        # (stat, _) = self.reader.request(self.reader.REQIDL)
-        # if stat != self.reader.OK:
-        #     return
-
-        # (stat, uid) = self.reader.SelectTagSN()
-        # if stat != self.reader.OK:
-        #     return
         uid = self.reader.get_uid()
         if not uid:
             return
 
-        card = int.from_bytes(bytes(uid),"little",False)
+        # card = int.from_bytes(bytes(uid),"little",False)
+        card = self.uid_to_id(uid)
+        
         print("CARD ID: "+str(card))
-        self.k.send_keys([KeyCode.A + card % 25])
-        sleep_ms(60)
-        self.k.send_keys([])
-        sleep_ms(100)
-        # if key := self.keys.get(card):
-        #     self.k.send_keys([key])
-        #     sleep_ms(60)
-        #     self.k.send_keys([])
-        #     sleep_ms(100)
-        #     self.flash(100)
+        if key := self.keys.get(card):
+            print(f'Sending key {key}')
+            self.k.send_keys([key])
+            sleep_ms(60)
+            self.k.send_keys([])
+            sleep_ms(100)
+            self.flash(200)
         # else:
         #     print('Unknown card!!!')
