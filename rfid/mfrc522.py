@@ -1,5 +1,6 @@
+# pylint: disable=import-error
 from machine import Pin, SPI
-
+# pylint: enable=import-error
 
 class MFRC522:
 
@@ -17,15 +18,20 @@ class MFRC522:
         self.sck = Pin(sck, Pin.OUT)
         self.mosi = Pin(mosi, Pin.OUT)
         self.miso = Pin(miso)
-        self.rst = Pin(rst, Pin.OUT)
+        if rst is not None:
+            self.rst = Pin(rst, Pin.OUT)
+        else:
+            self.rst = None
         self.cs = Pin(cs, Pin.OUT)
 
-        self.rst.value(0)
+        if rst is not None:
+            self.rst.value(0)
         self.cs.value(1)
 
         self.spi = SPI(0,baudrate=1000000,sck=self.sck, mosi= self.mosi, miso= self.miso)
 
-        self.rst.value(1)
+        if rst is not None:
+            self.rst.value(1)
         self.init()
 
     def _wreg(self, reg, val):
@@ -154,8 +160,8 @@ class MFRC522:
 
         self._wreg(0x0D, 0x07)
         (stat, recv, bits) = self._tocard(0x0C, [mode])
-        
-        print("request {} {} {}".format(stat, recv, bits))
+
+        # print("request {} {} {}".format(stat, recv, bits))
 
         if (stat != self.OK) | (bits != 0x10):
             stat = self.ERR
@@ -170,7 +176,7 @@ class MFRC522:
         self._wreg(0x0D, 0x00)
         (stat, recv, bits) = self._tocard(0x0C, ser)
 
-        print("anticoll {} {} {}".format(stat, recv, bits))
+        # print("anticoll {} {} {}".format(stat, recv, bits))
 
         if stat == self.OK:
             if len(recv) == 5:
@@ -230,10 +236,42 @@ class MFRC522:
             (stat, raw_uid) = self.anticoll()
 
             if stat == self.OK:
-                print("New card detected")
-                print("  - tag type: 0x%02x" % tag_type)
-                print("  - uid	 : 0x%02x%02x%02x%02x" % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
+                # print("New card detected")
+                # print("  - tag type: 0x%02x" % tag_type)
+                # print("  - uid	 : 0x%02x%02x%02x%02x" % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
+                print(f'[RFID] {raw_uid[0]:02X}:{raw_uid[1]:02X}:{raw_uid[2]:02X}:{raw_uid[3]:02X}')
                 
                 return raw_uid
 
         return None
+
+    @property
+    def tag(self) -> str|None:
+        """
+        Current tag on reader.
+        """
+        self.init()
+        if uid := self.get_uid():
+            return f"{uid[0]:02X}:{uid[1]:02X}:{uid[2]:02X}:{uid[3]:02X}"
+        return None
+
+if __name__ == '__main__':
+    # pylint: disable=import-error
+    from utime import sleep_ms
+    # pylint: enable=import-error
+
+    reader = MFRC522(sck=2,miso=0,mosi=3,cs=1,rst=None)
+
+    print('starting')
+    try:
+        while True:
+            sleep_ms(50)
+            reader.init()
+
+            uid = reader.get_uid()
+            if not uid:
+                continue
+
+            print("CARD ID: "+str(uid))
+    except KeyboardInterrupt:
+        pass

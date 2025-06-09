@@ -118,7 +118,7 @@ class BiasedMPU9250(MPU9250):
         sy = []
         sz = []
         f = float(samples)
-        
+
         for i in range(samples):
             (dx, dy, dz) = self.mpu6500.gyro
             sx += [dx]
@@ -127,7 +127,8 @@ class BiasedMPU9250(MPU9250):
             x += dx / f
             y += dy / f
             z += dz / f
-        
+            sleep_ms(10)
+
         (dx, dy, dz) = (0., 0., 0.)
         for i in range(samples):
             dx += (sx[i] - x)*(sx[i] - x)/f
@@ -150,12 +151,12 @@ class BiasedMPU9250(MPU9250):
         if abs(cy) < dy:
             y = 0
         z -= cz
-        if abs(cz) < dx:
+        if abs(cz) < dz:
             z = 0
         return (x, y, z)
 
 if __name__ == '__main__':
-    i2c = I2C(0, scl=Pin(9), sda=Pin(8))
+    i2c = I2C(0, scl=Pin(5), sda=Pin(4))
     print(str(i2c.scan()))
 
     # gyro = MPU9250(i2c)
