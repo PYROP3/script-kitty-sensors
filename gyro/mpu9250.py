@@ -136,7 +136,7 @@ class BiasedMPU9250(MPU9250):
             dz += (sz[i] - z)*(sz[i] - z)/f
         
         self.calibration = (x, y, z)
-        self.calibration_deviation = (2*math.sqrt(dx), 2*math.sqrt(dy), 2*math.sqrt(dz))
+        self.calibration_deviation = (math.sqrt(dx), math.sqrt(dy), math.sqrt(dz))
 
 
     @property
@@ -168,8 +168,10 @@ if __name__ == '__main__':
 
     while True:
         try:
+            (dx, dy, dz) = gyro.mpu6500.gyro
+            print(f'{dx},{dy},{dz}')
             (x, y, z) = gyro.gyro
-            print(f'{x},{y},{z}')
+            print(f'                         {x},{y},{z}')
             # print(f'{gyro.acceleration=}')
             # print(f'{gyro.gyro=}')
             # print(f'{gyro.magnetic=}')

@@ -44,26 +44,40 @@ class Controller:
         self.i2c = I2C(0, scl=Pin(I2C_SCL), sda=Pin(I2C_SDA))
         print(str(self.i2c.scan()))
 
+        # On-board LED
+        self.led = Pin("LED", Pin.OUT)
+
+        self._flash(200)
+
         # Gyro, Accel, Magnet, Temp
         self.mpu9250 = mpu9250.BiasedMPU9250(self.i2c)
+
+        self._flash(200)
 
         # RFID
         self.mfrc522 = mfrc522.MFRC522(sck=SPI_SCK, miso=SPI_MISO, mosi=SPI_MOSI, cs=SPI_CS, rst=SPI_RST)
 
+        self._flash(200)
+
         # OLED
         self.ssd1306 = ssd1306.SSD1306_I2C(self.i2c)
+
+        self._flash(200)
 
         # IR receiver
         self.hx1838 = hx1838.HX1838(Pin(IR_SIGNAL), self._ir_callback)
 
+        self._flash(200)
+
         # Keyboard
         self.keyboard = KeyboardInterface()
+
+        self._flash(200)
 
         # Mouse
         self.mouse = MouseInterface()
 
-        # On-board LED
-        self.led = Pin("LED", Pin.OUT)
+        self._flash(200)
 
         # System state
         self.state = state.SystemState(eye_list[0])
@@ -140,6 +154,11 @@ class Controller:
         self.keyboard.send_keys([])
         sleep_ms(up)
 
+    def _click_left(self, down: int=50):
+        self.mouse.click_left()
+        sleep_ms(down)
+        self.mouse.click_left(down=False)
+
     def _initialize(self):
         # Flash
         self._flash(300)
@@ -172,6 +191,14 @@ class Controller:
         self._flash(300)
         self._flash(300)
 
+        if not self._disable_hid:
+            self._click_left()
+            sleep_ms(500)
+            self._click_left()
+            sleep_ms(500)
+            self._click_left()
+            sleep_ms(500)
+
     def _input_data(self):
         self.state.gyro = self.mpu9250.gyro
         print(f'[GYRO] {self.state.gyro}')
@@ -188,8 +215,8 @@ class Controller:
                 print(f'[CTRL] Unknown tag {tag}')
 
         # Gyro data
-        mouse_state_x = int(self.state.gyro[2] * GYRO_TO_MOUSE_K)
-        mouse_state_y = int(self.state.gyro[0] * GYRO_TO_MOUSE_K)
+        mouse_state_x = int(self.state.gyro[0] * GYRO_TO_MOUSE_K)
+        mouse_state_y = int(self.state.gyro[2] * GYRO_TO_MOUSE_K) * -1
         self.state.mouse = (mouse_state_x, mouse_state_y)
 
         # Magnet data
@@ -203,6 +230,8 @@ class Controller:
 
             # Send mouse
             mx, my = self.state.mouse
+            mx = max(-127, min(mx, 127))
+            my = max(-127, min(my, 127))
             if mx != 0 or my != 0:
                 self.mouse.move_by(mx, my)
 
@@ -248,3 +277,12 @@ class Controller:
             self.ssd1306.fill(0)
             self.ssd1306.show()
             self.hx1838.close()
+
+        except Exception as e:
+            self.ssd1306.fill(0)
+            self.state.display_line = 0
+            self._typewrite_text(e.__class__.__name__, x=0)
+            # content = str(e)
+            # line_size = 128 // 8
+            # for i in range(min(6, len(content)//line_size)):
+            #     self._typewrite_text(content[i*line_size:(i+1)*line_size], x=0)
