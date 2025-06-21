@@ -1,4 +1,6 @@
 # pylint: disable=import-error
+import errno
+
 from utime import sleep_ms
 from machine import I2C, Pin
 from usb.device.mouse import MouseInterface
@@ -140,13 +142,23 @@ class Controller:
     def _display_text(self, text: str, line: int, x: int=30, show: bool=True):
         print(f'[DISP] ({line}) {text}')
         self.ssd1306.text(text, x, 10*line)
+        self.state.display_updated = True
         if show:
             self.ssd1306.show()
 
     def _typewrite_text(self, text: str, x: int=30, show: bool=True):
-        self._display_text(text, self.state.display_line, x=x, show=show)
+        if self.state.display_text[self.state.display_line] != text:
+            self._display_text(text, self.state.display_line, x=x, show=show)
+            self.state.display_text[self.state.display_line] = text
         self.state.display_line += 1
         self.state.display_line %= OLED_LINE_LIMIT
+
+    def _clear_display(self, show: bool=True):
+        self.ssd1306.fill(0)
+        self.state.display_line = 1
+        self.state.display_text = ['', '', '', '', '', '']
+        if show:
+            self.ssd1306.show()
 
     def _send_single_key(self, key: KeyCode, down: int=60, up: int=100):
         self.keyboard.send_keys([key])
@@ -164,7 +176,7 @@ class Controller:
         self._flash(300)
 
         # Clear display
-        self.ssd1306.fill(0)
+        self._clear_display(show=False)
         self._typewrite_text('Initialize')
 
         # Initialize HID
@@ -250,39 +262,54 @@ class Controller:
         self._typewrite_text(self.state.current_eye.name, show=False)
         self._typewrite_text(f'> {current_selecting_eye.name}', show=False)
         self._typewrite_text(f'MX: {self.state.mouse[0]}', show=False)
-        self._typewrite_text(f'MY: {self.state.mouse[1]}')
+        self._typewrite_text(f'MY: {self.state.mouse[1]}', show=False)
+        if self.state.display_updated:
+            self.ssd1306.show()
+            self.state.display_updated = False
 
     def main_loop(self):
-        try:
-            self._initialize()
+        while True:
+            try:
+                self._initialize()
 
-            sleep_ms(1000)
+                sleep_ms(1000)
 
-            while True:
+                while True:
 
-                # Collect sensor data
-                self._input_data()
+                    # Collect sensor data
+                    self._input_data()
 
-                # Process sensor data
-                self._process_data()
+                    # Process sensor data
+                    self._process_data()
 
-                # Output data
-                self._output_data()
+                    # Output data
+                    self._output_data()
 
-                # Sleep
-                sleep_ms(LOOP_DELAY_MS)
+                    # # Sleep
+                    # sleep_ms(LOOP_DELAY_MS)
 
-        except KeyboardInterrupt:
-            print('Exit')
-            self.ssd1306.fill(0)
-            self.ssd1306.show()
-            self.hx1838.close()
+            except KeyboardInterrupt:
+                print('Exit')
+                self.ssd1306.fill(0)
+                self.ssd1306.show()
+                self.hx1838.close()
+                break
 
-        except Exception as e:
-            self.ssd1306.fill(0)
-            self.state.display_line = 0
-            self._typewrite_text(e.__class__.__name__, x=0)
-            # content = str(e)
-            # line_size = 128 // 8
-            # for i in range(min(6, len(content)//line_size)):
-            #     self._typewrite_text(content[i*line_size:(i+1)*line_size], x=0)
+            except OSError as e:
+                print(f'{e.errno} -> {errno.errorcode[e.errno]}')
+                self._clear_display(show=True)
+                self._typewrite_text(e.__class__.__name__, x=0, show=False)
+                self._typewrite_text(str(e.errno), x=0, show=False)
+                self._typewrite_text(errno.errorcode[e.errno], x=0)
+                self.ssd1306.show()
+                sleep_ms(3000)
+
+            except Exception as e:
+                self.ssd1306.fill(0)
+                self.state.display_line = 0
+                self._typewrite_text(e.__class__.__name__, x=0)
+                sleep_ms(3000)
+                # content = str(e)
+                # line_size = 128 // 8
+                # for i in range(min(6, len(content)//line_size)):
+                #     self._typewrite_text(content[i*line_size:(i+1)*line_size], x=0)

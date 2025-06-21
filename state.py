@@ -29,3 +29,5 @@ class SystemState:
         self.next_eye: EyeMode = None
         self.ordered_selection_idx = 0
         self.display_line: int = 0
+        self.display_text: list[str] = ['', '', '', '', '', '']
+        self.display_updated: bool = False

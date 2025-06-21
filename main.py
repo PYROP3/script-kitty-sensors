@@ -1,7 +1,5 @@
 # pylint: disable=import-error
-from machine import Pin
 from usb.device.keyboard import KeyCode
-import utime
 
 import controller
 import state
@@ -29,7 +27,7 @@ eyes = [state.EyeMode(name=name, rfid=rfid, key=key, ir=ir) for (name, rfid, key
 for idx, eye in enumerate(eyes):
     eye.pos = idx
 
-controller = controller.Controller(eyes, disable_hid=True)
+controller = controller.Controller(eyes, disable_hid=False)
 
 print('[MAIN] Starting controller')
 controller.main_loop()
