@@ -33,7 +33,7 @@ GYRO_TO_MOUSE_K = 100.
 LOOP_DELAY_MS = 1
 
 # OLED line limit
-OLED_LINE_LIMIT = 5
+OLED_LINE_LIMIT = 6
 
 class Controller:
     """Controller for all sensors and outputs."""
@@ -43,46 +43,10 @@ class Controller:
         self._ordered_eyes = eye_list
         self._eyes_amount = len(eye_list)
 
-        self.i2c = I2C(0, scl=Pin(I2C_SCL), sda=Pin(I2C_SDA))
-        print(str(self.i2c.scan()))
-
-        # On-board LED
-        self.led = Pin("LED", Pin.OUT)
-
-        self._flash(200)
-
-        # Gyro, Accel, Magnet, Temp
-        self.mpu9250 = mpu9250.BiasedMPU9250(self.i2c)
-
-        self._flash(200)
-
-        # RFID
-        self.mfrc522 = mfrc522.MFRC522(sck=SPI_SCK, miso=SPI_MISO, mosi=SPI_MOSI, cs=SPI_CS, rst=SPI_RST)
-
-        self._flash(200)
-
-        # OLED
-        self.ssd1306 = ssd1306.SSD1306_I2C(self.i2c)
-
-        self._flash(200)
-
-        # IR receiver
-        self.hx1838 = hx1838.HX1838(Pin(IR_SIGNAL), self._ir_callback)
-
-        self._flash(200)
-
-        # Keyboard
-        self.keyboard = KeyboardInterface()
-
-        self._flash(200)
-
-        # Mouse
-        self.mouse = MouseInterface()
-
-        self._flash(200)
-
         # System state
         self.state = state.SystemState(eye_list[0])
+
+        self._setup()
 
         self._disable_hid = disable_hid
 
@@ -91,6 +55,9 @@ class Controller:
         self.state.ordered_selection_idx %= self._eyes_amount
 
     def _ir_callback(self, data: int, _addr, _ctrl):
+        if (not self.state.enable_ir) or (not self.state.enable_keyboard):
+            return
+
         if data < 0:  # NEC protocol sends repeat codes.
             return
 
@@ -141,10 +108,18 @@ class Controller:
 
     def _display_text(self, text: str, line: int, x: int=30, show: bool=True):
         print(f'[DISP] ({line}) {text}')
-        self.ssd1306.text(text, x, 10*line)
-        self.state.display_updated = True
-        if show:
-            self.ssd1306.show()
+        if self.ssd1306 is None:
+            return
+        try:
+            self.ssd1306.text(text, x, 10*line)
+            self.state.display_updated = True
+            if show:
+                self.ssd1306.show()
+        except Exception as e:
+            self.state.last_exception = e
+            self.state.last_exception_module = 'oledtext'
+            self.state.enable_mouse = False
+            raise e
 
     def _typewrite_text(self, text: str, x: int=30, show: bool=True):
         if self.state.display_text[self.state.display_line] != text:
@@ -154,22 +129,140 @@ class Controller:
         self.state.display_line %= OLED_LINE_LIMIT
 
     def _clear_display(self, show: bool=True):
-        self.ssd1306.fill(0)
-        self.state.display_line = 1
-        self.state.display_text = ['', '', '', '', '', '']
-        if show:
-            self.ssd1306.show()
+        if self.ssd1306 is None:
+            return
+        try:
+            self.ssd1306.fill(0)
+            self.state.display_line = 1
+            self.state.display_text = ['', '', '', '', '', '']
+            if show:
+                self.ssd1306.show()
+        except Exception as e:
+            self.state.last_exception = e
+            self.state.last_exception_module = 'oledclear'
+            self.state.enable_mouse = False
+            raise e
 
     def _send_single_key(self, key: KeyCode, down: int=60, up: int=100):
-        self.keyboard.send_keys([key])
-        sleep_ms(down)
-        self.keyboard.send_keys([])
-        sleep_ms(up)
+        if self.keyboard is None:
+            return
+
+        try:
+            self.keyboard.send_keys([key])
+            sleep_ms(down)
+            self.keyboard.send_keys([])
+            sleep_ms(up)
+        except Exception as e:
+            self.state.last_exception = e
+            self.state.last_exception_module = 'keyboard'
+            self.state.enable_keyboard = False
+            raise e
 
     def _click_left(self, down: int=50):
-        self.mouse.click_left()
-        sleep_ms(down)
-        self.mouse.click_left(down=False)
+        if self.mouse is None:
+            return
+        try:
+            self.mouse.click_left()
+            sleep_ms(down)
+            self.mouse.click_left(down=False)
+        except Exception as e:
+            self.state.last_exception = e
+            self.state.last_exception_module = 'mouseclick'
+            self.state.enable_mouse = False
+            raise e
+
+    def _setup(self):
+        self.i2c = I2C(0, scl=Pin(I2C_SCL), sda=Pin(I2C_SDA))
+        print(str(self.i2c.scan()))
+
+        # On-board LED
+        self.led = Pin("LED", Pin.OUT)
+
+        self._flash(200)
+
+        # Gyro, Accel, Magnet, Temp
+        if self.state.enable_gyro:
+            try:
+                self.mpu9250 = mpu9250.BiasedMPU9250(self.i2c)
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'gyrosetup'
+                self.state.enable_gyro = False
+                self.mpu9250 = None
+
+            self._flash(200)
+        else:
+            self.mpu9250 = None
+
+        # RFID
+        if self.state.enable_rfid:
+            try:
+                self.mfrc522 = mfrc522.MFRC522(sck=SPI_SCK, miso=SPI_MISO, mosi=SPI_MOSI, cs=SPI_CS, rst=SPI_RST)
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'rfidsetup'
+                self.state.enable_rfid = False
+                self.mfrc522 = None
+
+            self._flash(200)
+        else:
+            self.mfrc522 = None
+
+        # OLED
+        if self.state.enable_oled:
+            try:
+                self.ssd1306 = ssd1306.SSD1306_I2C(self.i2c)
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'oledsetup'
+                self.state.enable_oled = False
+                self.ssd1306 = None
+
+            self._flash(200)
+        else:
+            self.ssd1306 = None
+
+        # IR receiver
+        if self.state.enable_ir:
+            try:
+                self.hx1838 = hx1838.HX1838(Pin(IR_SIGNAL), self._ir_callback)
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'irsetup'
+                self.state.enable_ir = False
+                self.hx1838 = None
+
+            self._flash(200)
+        else:
+            self.hx1838 = None
+
+        # Keyboard
+        if self.state.enable_keyboard:
+            try:
+                self.keyboard = KeyboardInterface()
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'kbdsetup'
+                self.state.enable_keyboard = False
+                self.keyboard = None
+
+            self._flash(200)
+        else:
+            self.keyboard = None
+
+        # Mouse
+        if self.state.enable_mouse:
+            try:
+                self.mouse = MouseInterface()
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'mousesetup'
+                self.state.enable_mouse = False
+                self.mouse = None
+
+            self._flash(200)
+        else:
+            self.mouse = None
 
     def _initialize(self):
         # Flash
@@ -181,22 +274,44 @@ class Controller:
 
         # Initialize HID
         if not self._disable_hid:
-            usb.device.get().init(self.keyboard, self.mouse, builtin_driver=True)
+            args = []
+            if self.keyboard is not None:
+                args += [self.keyboard]
+            if self.mouse is not None:
+                args += [self.mouse]
+            if args:
+                usb.device.get().init(*args, builtin_driver=True)
 
-            while not self.keyboard.is_open():
-                sleep_ms(100)
-            self._typewrite_text('Keyboard OK')
+            if self.keyboard is not None:
+                while not self.keyboard.is_open():
+                    sleep_ms(100)
+                self._typewrite_text('Keyboard OK')
+            else:
+                self._typewrite_text('Keyboard SKIP')
 
-            while not self.mouse.is_open():
-                sleep_ms(100)
-            self._typewrite_text('Mouse OK')
+            if self.mouse is not None:
+                while not self.mouse.is_open():
+                    sleep_ms(100)
+                self._typewrite_text('Mouse OK')
+            else:
+                self._typewrite_text('Mouse SKIP')
 
         # Gyro calibration
-        self._typewrite_text('Calibrate...')
-        self.mpu9250.calibrate(100)
-        self._typewrite_text('Done!')
-        print(f'bias={self.mpu9250.calibration})')
-        print(f'std={self.mpu9250.calibration_deviation})')
+        if self.mpu9250 is not None:
+            self._typewrite_text('Calibrate...')
+            try:
+                self.mpu9250.calibrate(100)
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'gyrocal'
+                self.state.enable_mouse = False
+                raise e
+            
+            self._typewrite_text('Done!')
+            print(f'bias={self.mpu9250.calibration})')
+            print(f'std={self.mpu9250.calibration_deviation})')
+        else:
+            self._typewrite_text('Gyro SKIP')
 
         # Flash 3x
         self._flash(300)
@@ -211,11 +326,20 @@ class Controller:
             self._click_left()
             sleep_ms(500)
 
+# pylint: disable=bare-except
     def _input_data(self):
-        self.state.gyro = self.mpu9250.gyro
-        print(f'[GYRO] {self.state.gyro}')
-        self.state.magnet = self.mpu9250.magnetic
-        self.state.rfid = self.mfrc522.tag
+        if self.state.enable_gyro and self.state.enable_mouse:
+            try:
+                self.state.gyro = self.mpu9250.gyro
+                print(f'[GYRO] {self.state.gyro}')
+            except:
+                self.state.enable_gyro = False
+        if self.state.enable_rfid and self.state.enable_keyboard:
+            try:
+                self.state.rfid = self.mfrc522.tag
+            except:
+                self.state.enable_rfid = False
+# pylint: enable=bare-except
 
     def _process_data(self):
         # RFID data
@@ -241,11 +365,18 @@ class Controller:
                 self._send_single_key(self.state.next_eye.key)
 
             # Send mouse
-            mx, my = self.state.mouse
-            mx = max(-127, min(mx, 127))
-            my = max(-127, min(my, 127))
-            if mx != 0 or my != 0:
-                self.mouse.move_by(mx, my)
+            if self.mouse is not None:
+                mx, my = self.state.mouse
+                mx = max(-127, min(mx, 127))
+                my = max(-127, min(my, 127))
+                if mx != 0 or my != 0:
+                    try:
+                        self.mouse.move_by(mx, my)
+                    except Exception as e:
+                        self.state.last_exception = e
+                        self.state.last_exception_module = 'mousemove'
+                        self.state.enable_mouse = False
+                        raise e
 
         # Update current eye
         if self.state.next_eye:
@@ -257,18 +388,36 @@ class Controller:
 
         # Update display
         # TODO temporary only (add arrows for gyro/mouse, separate line for state.selecting_eye)
-        self.ssd1306.fill(0)
-        self.state.display_line = 1
-        self._typewrite_text(self.state.current_eye.name, show=False)
-        self._typewrite_text(f'> {current_selecting_eye.name}', show=False)
-        self._typewrite_text(f'MX: {self.state.mouse[0]}', show=False)
-        self._typewrite_text(f'MY: {self.state.mouse[1]}', show=False)
-        if self.state.display_updated:
-            self.ssd1306.show()
-            self.state.display_updated = False
+        if self.ssd1306 is not None:
+            try:
+                self._clear_display(show=False)
+                self._typewrite_text(self.state.current_eye.name, show=False)
+                self._typewrite_text(f'> {current_selecting_eye.name}', show=False)
+                self._typewrite_text(f'MX: {self.state.mouse[0]}', show=False)
+                self._typewrite_text(f'MY: {self.state.mouse[1]}', show=False)
+                _feature_flags = [
+                    self.state.enable_gyro,
+                    self.state.enable_ir,
+                    self.state.enable_rfid,
+                    self.state.enable_oled,
+                    self.state.enable_keyboard,
+                    self.state.enable_mouse,
+                ]
+                feature_flags = ''.join(['-' if f else 'X' for f in _feature_flags])
+                self._typewrite_text(feature_flags, show=False)
+                if self.state.display_updated:
+                    self.ssd1306.show()
+                    self.state.display_updated = False
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'oledout'
+                self.state.enable_mouse = False
+                raise e
 
     def main_loop(self):
         while True:
+            self._setup()
+
             try:
                 self._initialize()
 
@@ -290,24 +439,32 @@ class Controller:
 
             except KeyboardInterrupt:
                 print('Exit')
-                self.ssd1306.fill(0)
-                self.ssd1306.show()
-                self.hx1838.close()
-                break
+                if self.ssd1306 is not None:
+                    self.ssd1306.fill(0)
+                    self.ssd1306.show()
+                if self.hx1838 is not None:
+                    self.hx1838.close()
+                return
 
             except OSError as e:
                 print(f'{e.errno} -> {errno.errorcode[e.errno]}')
-                self._clear_display(show=True)
-                self._typewrite_text(e.__class__.__name__, x=0, show=False)
-                self._typewrite_text(str(e.errno), x=0, show=False)
-                self._typewrite_text(errno.errorcode[e.errno], x=0)
-                self.ssd1306.show()
+                if self.ssd1306 is not None:
+                    self._clear_display(show=True)
+                    self._typewrite_text(e.__class__.__name__, x=0, show=False)
+                    self._typewrite_text(str(e.errno), x=0, show=False)
+                    self._typewrite_text(errno.errorcode[e.errno], x=0, show=False)
+                    self._typewrite_text(self.state.last_exception.__class__.__name__, x=0, show=False)
+                    self._typewrite_text(self.state.last_exception_module, x=0, show=False)
+                    self.ssd1306.show()
                 sleep_ms(3000)
 
             except Exception as e:
-                self.ssd1306.fill(0)
-                self.state.display_line = 0
-                self._typewrite_text(e.__class__.__name__, x=0)
+                if self.ssd1306 is not None:
+                    self._clear_display(show=True)
+                    self._typewrite_text(e.__class__.__name__, x=0, show=False)
+                    self._typewrite_text(self.state.last_exception.__class__.__name__, x=0, show=False)
+                    self._typewrite_text(self.state.last_exception_module, x=0, show=False)
+                    self.ssd1306.show()
                 sleep_ms(3000)
                 # content = str(e)
                 # line_size = 128 // 8

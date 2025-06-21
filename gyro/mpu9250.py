@@ -31,8 +31,8 @@ from utime import sleep_ms
 from micropython import const
 from machine import I2C, Pin
 
-from mpu6500 import MPU6500
-from ak8963 import AK8963
+from .mpu6500 import MPU6500
+from .ak8963 import AK8963
 # pylint: enable=import-error
 
 __version__ = "0.4.0"

@@ -31,3 +31,14 @@ class SystemState:
         self.display_line: int = 0
         self.display_text: list[str] = ['', '', '', '', '', '']
         self.display_updated: bool = False
+
+        # Feature flags
+        self.enable_gyro: bool = True
+        self.enable_ir: bool = True
+        self.enable_rfid: bool = True
+        self.enable_oled: bool = True
+        self.enable_keyboard: bool = True
+        self.enable_mouse: bool = True
+
+        self.last_exception: Exception = None
+        self.last_exception_module: str = None
