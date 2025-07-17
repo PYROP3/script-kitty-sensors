@@ -1,3 +1,4 @@
+# pylint: disable=broad-exception-caught
 # pylint: disable=import-error
 import errno
 
@@ -304,7 +305,7 @@ class Controller:
             except Exception as e:
                 self.state.last_exception = e
                 self.state.last_exception_module = 'gyrocal'
-                self.state.enable_mouse = False
+                self.state.enable_gyro = False
                 raise e
             
             self._typewrite_text('Done!')
@@ -332,12 +333,16 @@ class Controller:
             try:
                 self.state.gyro = self.mpu9250.gyro
                 print(f'[GYRO] {self.state.gyro}')
-            except:
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'gyroin'
                 self.state.enable_gyro = False
         if self.state.enable_rfid and self.state.enable_keyboard:
             try:
                 self.state.rfid = self.mfrc522.tag
-            except:
+            except Exception as e:
+                self.state.last_exception = e
+                self.state.last_exception_module = 'rfidin'
                 self.state.enable_rfid = False
 # pylint: enable=bare-except
 
